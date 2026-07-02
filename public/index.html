@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LOUYAH GESTION — Fondations (Backend réel)</title>
+<style>
+  :root{--gold:#A8861A;--dark:#111;--dark2:#1a1a1a;--dark3:#222;--text:#eee;--text2:#999;--border:#2a2a2a;--red:#dc3545;--green:#22c55e}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Segoe UI',Arial,sans-serif;background:var(--dark);color:var(--text)}
+  #login-screen{position:fixed;inset:0;background:var(--dark);display:flex;align-items:center;justify-content:center}
+  .login-box{background:var(--dark2);border:1px solid var(--border);border-radius:10px;padding:32px;width:320px}
+  .login-box h1{font-size:1.1rem;color:var(--gold);margin:0 0 4px}
+  .login-box p{font-size:.78rem;color:var(--text2);margin:0 0 20px}
+  input,select{width:100%;background:var(--dark3);border:1px solid var(--border);border-radius:6px;padding:9px 11px;color:var(--text);font-size:.85rem;margin-bottom:10px}
+  button{cursor:pointer;border:none;border-radius:6px;padding:9px 16px;font-size:.82rem;font-weight:600}
+  .btn-gold{background:var(--gold);color:#111;width:100%}
+  .btn-dark{background:var(--dark3);color:var(--text);border:1px solid var(--border)}
+  #login-err{color:var(--red);font-size:.75rem;margin-top:8px;display:none}
+  #app{display:none;padding:20px;max-width:1000px;margin:0 auto}
+  header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;border-bottom:1px solid var(--border);padding-bottom:14px}
+  header h2{font-size:1rem;color:var(--gold);margin:0}
+  .tabs{display:flex;gap:8px;margin-bottom:16px}
+  .tab{padding:7px 14px;border-radius:6px;font-size:.78rem;cursor:pointer;background:var(--dark3);color:var(--text2)}
+  .tab.active{background:var(--gold);color:#111;font-weight:600}
+  .panel{display:none}
+  .panel.active{display:block}
+  table{width:100%;border-collapse:collapse;font-size:.8rem}
+  th{text-align:left;padding:8px;border-bottom:2px solid var(--gold);color:var(--text2);font-size:.7rem;text-transform:uppercase}
+  td{padding:8px;border-bottom:1px solid var(--border)}
+  .card{background:var(--dark2);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px}
+  .form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .msg{font-size:.78rem;padding:8px 12px;border-radius:6px;margin-bottom:10px}
+  .msg.err{background:rgba(220,53,69,.15);color:#ff8a8a}
+  .msg.ok{background:rgba(34,197,94,.15);color:#7be3a0}
+</style>
+</head>
+<body>
+
+<div id="login-screen">
+  <div class="login-box">
+    <h1>LOUYAH GESTION</h1>
+    <p>Fondations — Backend réel (auth, employés, paie)</p>
+    <input id="login-login" placeholder="Identifiant" autocomplete="username">
+    <input id="login-pass" type="password" placeholder="Mot de passe" autocomplete="current-password">
+    <button class="btn-gold" onclick="doLogin()">Se connecter</button>
+    <div id="login-err"></div>
+  </div>
+</div>
+
+<div id="app">
+  <header>
+    <h2>LOUYAH GESTION — <span id="who"></span></h2>
+    <button class="btn-dark" onclick="doLogout()">Déconnexion</button>
+  </header>
+
+  <div class="tabs">
+    <div class="tab active" onclick="switchPanel('employes')">Employés</div>
+    <div class="tab" onclick="switchPanel('paie')">Paie</div>
+  </div>
+
+  <div id="panel-employes" class="panel active">
+    <div class="card">
+      <div id="emp-msg"></div>
+      <div class="form-row">
+        <input id="emp-nom" placeholder="Nom complet">
+        <input id="emp-poste" placeholder="Poste">
+        <input id="emp-service" placeholder="Service">
+        <input id="emp-salaire" type="number" placeholder="Salaire brut mensuel (FCFA)">
+        <select id="emp-genre"><option value="">Genre</option><option>Masculin</option><option>Féminin</option></select>
+        <select id="emp-contrat"><option>CDI</option><option>CDD</option><option>Stage</option></select>
+      </div>
+      <button class="btn-gold" onclick="createEmployee()">Ajouter l'employé</button>
+    </div>
+    <div class="card">
+      <table>
+        <thead><tr><th>Matricule</th><th>Nom</th><th>Poste</th><th>Salaire</th><th>Statut</th><th></th></tr></thead>
+        <tbody id="emp-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="panel-paie" class="panel">
+    <div class="card">
+      <div id="paie-msg"></div>
+      <div class="form-row">
+        <input id="paie-mois" placeholder="Mois (ex: Juillet 2026)">
+        <button class="btn-gold" onclick="genererPaie()">Générer les bulletins du mois</button>
+      </div>
+    </div>
+    <div class="card">
+      <table>
+        <thead><tr><th>Employé</th><th>Mois</th><th>Brut</th><th>CNPS sal.</th><th>ITS</th><th>Net</th></tr></thead>
+        <tbody id="paie-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '/api';
+
+async function api(path, opts) {
+  const res = await fetch(API + path, Object.assign({ credentials: 'include', headers: { 'Content-Type': 'application/json' } }, opts));
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Erreur serveur');
+  return data;
+}
+
+async function doLogin() {
+  const login = document.getElementById('login-login').value.trim();
+  const password = document.getElementById('login-pass').value;
+  const errEl = document.getElementById('login-err');
+  errEl.style.display = 'none';
+  try {
+    const user = await api('/auth/login', { method: 'POST', body: JSON.stringify({ login, password }) });
+    document.getElementById('who').textContent = user.nom + ' (' + user.role + ')';
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    loadEmployees();
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.style.display = 'block';
+  }
+}
+
+async function doLogout() {
+  await api('/auth/logout', { method: 'POST' });
+  location.reload();
+}
+
+function switchPanel(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('panel-' + name).classList.add('active');
+  if (name === 'paie') loadBulletins();
+}
+
+function fmtN(n) { return Number(n || 0).toLocaleString('fr-FR'); }
+
+async function loadEmployees() {
+  const list = await api('/employees');
+  const tb = document.getElementById('emp-tbody');
+  tb.innerHTML = list.map(e => `<tr>
+    <td>${e.matricule || '—'}</td><td>${e.nom}</td><td>${e.poste || '—'}</td>
+    <td>${fmtN(e.salaire_base)} FCFA</td><td>${e.statut}</td>
+    <td><button class="btn-dark" onclick="deleteEmployee(${e.id})">Suppr.</button></td>
+  </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--text2)">Aucun employé</td></tr>';
+}
+
+async function createEmployee() {
+  const msg = document.getElementById('emp-msg');
+  msg.innerHTML = '';
+  const body = {
+    nom: document.getElementById('emp-nom').value.trim(),
+    poste: document.getElementById('emp-poste').value.trim(),
+    service: document.getElementById('emp-service').value.trim(),
+    salaire_base: parseFloat(document.getElementById('emp-salaire').value) || 0,
+    genre: document.getElementById('emp-genre').value,
+    contrat: document.getElementById('emp-contrat').value
+  };
+  try {
+    await api('/employees', { method: 'POST', body: JSON.stringify(body) });
+    msg.innerHTML = '<div class="msg ok">Employé ajouté avec succès.</div>';
+    ['emp-nom','emp-poste','emp-service','emp-salaire'].forEach(id => document.getElementById(id).value = '');
+    loadEmployees();
+  } catch (err) {
+    msg.innerHTML = `<div class="msg err">${err.message}</div>`;
+  }
+}
+
+async function deleteEmployee(id) {
+  if (!confirm('Supprimer cet employé ?')) return;
+  await api('/employees/' + id, { method: 'DELETE' });
+  loadEmployees();
+}
+
+async function genererPaie() {
+  const msg = document.getElementById('paie-msg');
+  msg.innerHTML = '';
+  const mois = document.getElementById('paie-mois').value.trim();
+  try {
+    const result = await api('/payroll/generate', { method: 'POST', body: JSON.stringify({ mois }) });
+    msg.innerHTML = `<div class="msg ok">${result.count} bulletin(s) généré(s) pour ${mois}.</div>`;
+    loadBulletins();
+  } catch (err) {
+    msg.innerHTML = `<div class="msg err">${err.message}</div>`;
+  }
+}
+
+async function loadBulletins() {
+  const list = await api('/payroll/bulletins');
+  const tb = document.getElementById('paie-tbody');
+  tb.innerHTML = list.map(p => `<tr>
+    <td>${p.nom}</td><td>${p.mois}</td><td>${fmtN(p.brut)}</td>
+    <td>${fmtN(p.cnps_sal)}</td><td>${fmtN(p.its)}</td><td><strong>${fmtN(p.net)} FCFA</strong></td>
+  </tr>`).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--text2)">Aucun bulletin généré</td></tr>';
+}
+
+// Reconnexion automatique si un cookie de session valide existe déjà
+api('/auth/me').then(user => {
+  document.getElementById('who').textContent = user.nom + ' (' + user.role + ')';
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  loadEmployees();
+}).catch(() => {});
+</script>
+</body>
+</html>
